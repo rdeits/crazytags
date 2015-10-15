@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
             Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[0], K, tag_detector.getTagSize());
             crazytags::rigid_transform_t tag_to_camera_msg = encodeLCMFrame(tag_to_camera);
             tag_to_camera_msg.utime = timestamp_now();
-            lcm->publish("APRIL_TAG_TO_CAMERA_LEFT", &tag_to_camera_msg);
+            lcm->publish("APRIL_TAG_TO_CAMERA", &tag_to_camera_msg);
         }
     }
 
