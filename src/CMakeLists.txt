@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_INSTALL_PREFIX}/share/cmake)
-include(pods)
 
 ############################### C++ 11 Boilerplate #######################################
 if (CMAKE_COMPILER_IS_GNUCC)
@@ -17,11 +16,7 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wreturn-type -Wuninitialized -Wunused-variable") # -Wunused-parameter")
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-  if (APPLE)  # this was a step towards getting things to work with
-  #   clang on mac, but ultimately we didn't get there...   (but I would
-  #   be worried about sharing pointers between objects compiled against
-  #   different c++ libs, so removing it)
-  #    # http://stackoverflow.com/questions/13445742/apple-and-shared-ptr
+  if (APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
   endif()
 elseif (MSVC)
@@ -31,34 +26,14 @@ elseif (MSVC)
      message(FATAL_ERROR "requires MS VC++ 12.0 update 5 or greater (Visual Studio >= 2013).  download for free at http://visualstudio.com")
    endif()
 
-#  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /arch:SSE2 /openmp")
-#  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:SSE2 /openmp")
-
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")
-  # disable warning C4251: e.g.'RigidBody::linkname' : class 'std::basic_string<_Elem,_Traits,_Ax>' needs to have dll-interface to be used by clients of class 'RigidBody'
-  # followed by template linking errors.  After reading, e.g.:
-  #   https://connect.microsoft.com/VisualStudio/feedback/details/696593/vc-10-vs-2010-basic-string-exports
-  # I think we're not being sufficiently careful with our library interfaces (on other platforms as well) - Russ
-
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4503")
-  # disable C4503: 'identifier' : decorated name length exceeded, name was truncated
-  # these occur due to AutoDiffScalar inputs to DrakeJoint methods, which results in very long type names
-  # From https://msdn.microsoft.com/en-us/library/074af4b6.aspx:
-  # It is possible to ship an application that generates C4503, but if you get link time errors on a truncated symbol,
-  # it will be more difficult to determine the type of the symbol in the error. Debugging will also be more difficult;
-  # the debugger will also have difficultly mapping symbol name to type name. The correctness of the program, however,
-  # is unaffected by the truncated name.
-
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4522")
-  # disable C4522: 'class' : multiple assignment operators specified
-  # The class has multiple assignment operators of a single type. This warning is informational;
-  # the constructors are callable in your program.
-
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996") # disable sprintf security warning
 
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj") # after receiving RigidBodyManipulator.cpp : fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
 endif()
 ############################### C++ 11 Boilerplate #######################################
+
+include(pods)
+include(lcmtypes)
+lcmtypes_build()
 
 find_package(OpenCV REQUIRED)
 add_executable(image-capture image_capture.cpp)
@@ -81,6 +56,6 @@ else()
 endif()
 
 add_executable(publish-tags publish_tags.cpp)
-pods_use_pkg_config_packages(publish-tags apriltags lcm lcmtypes_bot2-core)
+pods_use_pkg_config_packages(publish-tags apriltags lcm)
 target_link_libraries(publish-tags ${OpenCV_LIBS} pthread)
 install(TARGETS publish-tags DESTINATION bin)

@@ -17,11 +17,12 @@
 // #include <drc_utils/BotWrapper.hpp>
 #include <lcm/lcm-cpp.hpp>
 
-#include <lcmtypes/bot_core.hpp>
+#include <lcmtypes/crazytags/rigid_transform_t.hpp>
 // #include <lcmtypes/bot_core/images_t.hpp>
 // #include <lcmtypes/bot_core/image_t.hpp>
 
 // #include <bot_core/camtrans.h>
+// #include <bot_core/timestamp.h>
 // #include <bot_param/param_util.h>
 // #include <bot_frames_cpp/bot_frames_cpp.hpp>
 
@@ -32,8 +33,11 @@
 
 #define IMAGE_U8_DEFAULT_ALIGNMENT 96
 
-int aligned_width(int width) {
-    return width + (IMAGE_U8_DEFAULT_ALIGNMENT - width % IMAGE_U8_DEFAULT_ALIGNMENT);
+int64_t timestamp_now()
+{
+    struct timeval tv;
+    gettimeofday (&tv, NULL);
+    return (int64_t) tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
 struct TagMatch {
@@ -78,12 +82,12 @@ Eigen::Isometry3d getRelativeTransform(TagMatch const& match, Eigen::Matrix3d co
 }
 
 
-bot_core::rigid_transform_t encodeLCMFrame(Eigen::Isometry3d const & frame) 
+crazytags::rigid_transform_t encodeLCMFrame(Eigen::Isometry3d const & frame) 
 {
     Eigen::Vector3d t(frame.translation());
     Eigen::Quaterniond r(frame.rotation());
 
-    bot_core::rigid_transform_t msg;
+    crazytags::rigid_transform_t msg;
     msg.quat[0] = r.w();
     msg.quat[1] = r.x();
     msg.quat[2] = r.y();
@@ -104,6 +108,7 @@ class AprilTagDetector {
         tf->black_border = getopt_get_int(options, "border");
         td = apriltag_detector_create();
         apriltag_detector_add_family(td, tf);
+        show_window = getopt_get_bool(getopt, "window");
 
         td->quad_decimate = getopt_get_double(getopt, "decimate");
         td->quad_sigma = getopt_get_double(getopt, "blur");
@@ -172,121 +177,27 @@ class AprilTagDetector {
         
         return tag_matches;
     }
-    
-    double getTagSize() const {
-        return tag_size;
-    }
 
-    private:
-    int quiet;
-    double tag_size;
-    apriltag_family_t *tf;
-    apriltag_detector_t *td;
-    getopt_t *getopt;
-};
-
-
-class CameraListener {
-    public:
-    CameraListener(std::shared_ptr<lcm::LCM> lcm_): lcm(lcm_) {};
-
-    void setDetector(AprilTagDetector* detector) {
-        mDetector = detector;
-    }
-
-    bool setup(bool show_window) {
-        cap.reset(new cv::VideoCapture(0)); // open the video camera no. 0
-
-        if (!cap->isOpened())  // if not success, exit program
-        {
-            std::cout << "Cannot open the video cam" << std::endl;
-            return -1;
-        }
-        
-       double dWidth = cap->get(CV_CAP_PROP_FRAME_WIDTH); //get the width of frames of the video
-       double dHeight = cap->get(CV_CAP_PROP_FRAME_HEIGHT); //get the height of frames of the video
-
-        std::cout << "Frame size : " << dWidth << " x " << dHeight << std::endl;
-
-        // mBotWrapper.reset(new drc::BotWrapper());
-
-        // while (!mBotWrapper->getBotParam()) {
-        //     std::cout << "Re-trying ... " << std::endl;
-        //     mBotWrapper->setDefaults();
-        // }
-        
-
-        // mLcmWrapper.reset(new drc::LcmWrapper(mBotWrapper->getLcm()));
-        // mLcmWrapper->get()->subscribe("CAMERA", &CameraListener::onCamera, this);
-
-        // mCamTransLeft = bot_param_get_new_camtrans(mBotWrapper->getBotParam(),"CAMERA_LEFT");
-        
-        K = Eigen::Matrix3d::Identity();
-
-        // K(0,0) = bot_camtrans_get_focal_length_x(mCamTransLeft);
-        // K(1,1) = bot_camtrans_get_focal_length_y(mCamTransLeft);
-        // K(0,2) = bot_camtrans_get_principal_x(mCamTransLeft);
-        // K(1,2) = bot_camtrans_get_principal_y(mCamTransLeft);
-        K(0,0) = 0.050;
-        K(1,1) = 0.050;
-        K(0,2) = dWidth / 2;
-        K(1,2) = dHeight / 2;
-
-        mShowWindow = show_window;
-        return true;
-    }  
-
-    bool readImage() {
-        cv::Mat frame;
-
-        bool bSuccess = cap->read(frame); // read a new frame from video
-        if (frame.rows == 0) {
-             std::cout << "Got an empty image" << std::endl;
-            return false;
-        }
-
-         if (!bSuccess) //if not success, break loop
-        {
-             std::cout << "Cannot read a frame from video stream" << std::endl;
-             return false;
-        }
-
-       onCamera(frame);
-
-       return true;
-   }
-    
-    // void start() {
-    //     mLcmWrapper->startHandleThread(true);
-    // }
-
-   void onCamera(const cv::Mat& image) {
-
-    // void onCamera(const lcm::ReceiveBuffer* buffer, const std::string& channel,
-    //             const bot_core::images_t* msg) {
-    //     cv::Mat image;
-    //     decodeImage(msg, image);
-        // if (image.cols == 640) {
-        //     cv::copyMakeBorder(image, image, 0, 0, 16, 16, cv::BORDER_CONSTANT, 0);
-        // }
+    std::vector<TagMatch> detectTags(const cv::Mat& image) {
 
         int residual = image.cols % IMAGE_U8_DEFAULT_ALIGNMENT;
         cv::Mat img_aligned;
         if (residual != 0) {
             cv::copyMakeBorder(image, img_aligned, 0, 0, (IMAGE_U8_DEFAULT_ALIGNMENT - residual) / 2, (IMAGE_U8_DEFAULT_ALIGNMENT - residual) / 2, cv::BORDER_CONSTANT, 0);
         } else {
-            img_aligned = image.clone();
+            img_aligned = image;
         }
-
 
         cv::cvtColor(img_aligned, img_aligned, CV_RGB2GRAY);
         image_u8_t *image_u8 = fromCvMat(img_aligned);
         
-        std::vector<TagMatch> tags = mDetector->detectTags(image_u8);
-        cv::cvtColor(img_aligned, img_aligned, CV_GRAY2RGB);
-        for (int i = 0; i < tags.size(); i++) { 
+        std::vector<TagMatch> tags = detectTags(image_u8);
 
-            if (mShowWindow) {
+
+        if (show_window) {
+            cv::cvtColor(img_aligned, img_aligned, CV_GRAY2RGB);
+            for (int i = 0; i < tags.size(); i++) { 
+
                 cv::line(img_aligned, tags[i].p0, tags[i].p1, cv::Scalar(255,0,0), 2, CV_AA);
                 cv::line(img_aligned, tags[i].p1, tags[i].p2, cv::Scalar(0,255,0), 2, CV_AA);
                 cv::line(img_aligned, tags[i].p2, tags[i].p3, cv::Scalar(0,0,255), 2, CV_AA);
@@ -307,22 +218,13 @@ class CameraListener {
                 cv::line(img_aligned, cv::Point2d(o[0], o[1]), cv::Point2d(px[0], px[1]), cv::Scalar(255,0,255), 1, CV_AA);
                 cv::line(img_aligned, cv::Point2d(o[0], o[1]), cv::Point2d(py[0], py[1]), cv::Scalar(255,255,0), 1, CV_AA);
             }
-
-            Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[i], K, mDetector->getTagSize());
-            bot_core::rigid_transform_t tag_to_camera_msg = encodeLCMFrame(tag_to_camera);
-            // tag_to_camera_msg.utime = msg->utime;
-            tag_to_camera_msg.utime = 0;
-            lcm->publish("APRIL_TAG_TO_CAMERA_LEFT", &tag_to_camera_msg);
-            // mLcmWrapper->get()->publish("APRIL_TAG_TO_CAMERA_LEFT", &tag_to_camera_msg);
-            break;
-            
-        }
-        if (mShowWindow) {
             cv::imshow("detections", img_aligned);
             cv::waitKey(1);
         }
-        
+
         image_u8_destroy(image_u8);
+        return tags;
+
     }
 
     // void decodeImage(const bot_core::images_t* msg, cv::Mat & decoded_image) {
@@ -348,17 +250,70 @@ class CameraListener {
         memcpy(image_u8->buf, img.data, size * sizeof(uint8_t));
         return image_u8;
     }
+    
+    double getTagSize() const {
+        return tag_size;
+    }
 
     private:
-    bool mShowWindow;
-    AprilTagDetector *mDetector;
-    // drc::LcmWrapper::Ptr mLcmWrapper;
-    // drc::BotWrapper::Ptr mBotWrapper;
-    // BotCamTrans* mCamTransLeft;
-    Eigen::Matrix3d K;
-    std::unique_ptr<cv::VideoCapture> cap;
-    std::shared_ptr<lcm::LCM> lcm;
+    bool show_window;
+    int quiet;
+    double tag_size;
+    apriltag_family_t *tf;
+    apriltag_detector_t *td;
+    getopt_t *getopt;
 };
+
+
+// class CameraListener {
+//     public:
+//     bool setup(bool show_window) {
+//         cap.reset(new cv::VideoCapture(0)); // open the video camera no. 0
+
+//         if (!cap->isOpened())  // if not success, exit program
+//         {
+//             std::cout << "Cannot open the video cam" << std::endl;
+//             return -1;
+//         }
+        
+//        double dWidth = cap->get(CV_CAP_PROP_FRAME_WIDTH); //get the width of frames of the video
+//        double dHeight = cap->get(CV_CAP_PROP_FRAME_HEIGHT); //get the height of frames of the video
+
+//         std::cout << "Frame size : " << dWidth << " x " << dHeight << std::endl;
+        
+//         K = Eigen::Matrix3d::Identity();
+
+//         // K(0,0) = bot_camtrans_get_focal_length_x(mCamTransLeft);
+//         // K(1,1) = bot_camtrans_get_focal_length_y(mCamTransLeft);
+//         // K(0,2) = bot_camtrans_get_principal_x(mCamTransLeft);
+//         // K(1,2) = bot_camtrans_get_principal_y(mCamTransLeft);
+//         K(0,0) = 0.050;
+//         K(1,1) = 0.050;
+//         K(0,2) = dWidth / 2;
+//         K(1,2) = dHeight / 2;
+
+//         return true;
+//     }  
+
+//     bool readImage() {
+//         cv::Mat frame;
+
+//         bool bSuccess = cap->read(frame); // read a new frame from video
+//         if (!bSuccess) //if not success, break loop
+//         {
+//              std::cout << "Cannot read a frame from video stream" << std::endl;
+//              return false;
+//         }
+
+//        onCamera(frame);
+
+//        return true;
+//    }
+
+//     private:
+//     Eigen::Matrix3d K;
+//     std::unique_ptr<cv::VideoCapture> cap;
+// };
 
 
 
@@ -385,17 +340,38 @@ int main(int argc, char *argv[])
         getopt_do_usage(getopt);
         exit(0);
     }  
-
     AprilTagDetector tag_detector(getopt);
-
     auto lcm = std::make_shared<lcm::LCM>();
-    CameraListener camera_listener(lcm);
 
+    Eigen::Matrix3d K = Eigen::Matrix3d::Identity();
+    // K(0,0) = bot_camtrans_get_focal_length_x(mCamTransLeft);
+    // K(1,1) = bot_camtrans_get_focal_length_y(mCamTransLeft);
+    // K(0,2) = bot_camtrans_get_principal_x(mCamTransLeft);
+    // K(1,2) = bot_camtrans_get_principal_y(mCamTransLeft);
+    K(0,0) = 0.050;
+    K(1,1) = 0.050;
+    K(0,2) = 640 / 2;
+    K(1,2) = 480 / 2;
 
-    if (camera_listener.setup(getopt_get_bool(getopt, "window"))) {
-        camera_listener.setDetector(&tag_detector);
-        while (camera_listener.readImage()) {};
+    cv::VideoCapture capture(0);
+    if (!capture.isOpened()) {
+        std::cout << "Cannot open the video cam" << std::endl;
+        return -1;
     }
+
+
+    cv::Mat frame;
+    while (capture.read(frame)) {
+        std::vector<TagMatch> tags = tag_detector.detectTags(frame);
+        if (tags.size() > 0) {
+            Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[0], K, tag_detector.getTagSize());
+            crazytags::rigid_transform_t tag_to_camera_msg = encodeLCMFrame(tag_to_camera);
+            tag_to_camera_msg.utime = timestamp_now();
+            // tag_to_camera_msg.utime = 0;
+            lcm->publish("APRIL_TAG_TO_CAMERA_LEFT", &tag_to_camera_msg);
+        }
+    }
+
 
     return 0;
 }

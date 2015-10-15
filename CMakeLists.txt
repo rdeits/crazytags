@@ -24,28 +24,28 @@ ExternalProject_Add(pods-cmake
     INSTALL_COMMAND ""
     )
 
-# ExternalProject_Add(lcm-pod
-#     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/lcm-pod
-#     DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/lcm-pod
-#     GIT_REPOSITORY https://github.com/RobotLocomotion/lcm-pod.git
-#     GIT_TAG ddf981b125e600b7aaada8daeab3e3f2ba2d2c55
-#     BUILD_IN_SOURCE 1
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND ${PODS_MAKE_COMMAND} BUILD_PREFIX=${CMAKE_INSTALL_PREFIX} BUILD_TYPE=${CMAKE_BUILD_TYPE}
-#     INSTALL_COMMAND ""
-#     )
-
-ExternalProject_Add(libbot
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/libbot
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/libbot
-    GIT_REPOSITORY https://github.com/RobotLocomotion/libbot.git
-    GIT_TAG 94fe5290329646959e1c27896d529abba81e6d93
+ExternalProject_Add(lcm-pod
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/lcm-pod
+    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/lcm-pod
+    GIT_REPOSITORY https://github.com/RobotLocomotion/lcm-pod.git
+    GIT_TAG ddf981b125e600b7aaada8daeab3e3f2ba2d2c55
     BUILD_IN_SOURCE 1
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ${PODS_MAKE_COMMAND} BUILD_PREFIX=${CMAKE_INSTALL_PREFIX} BUILD_TYPE=${CMAKE_BUILD_TYPE}
     INSTALL_COMMAND ""
-    # DEPENDS lcm-pod
     )
+
+# ExternalProject_Add(libbot
+#     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/libbot
+#     DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/libbot
+#     GIT_REPOSITORY https://github.com/RobotLocomotion/libbot.git
+#     GIT_TAG 94fe5290329646959e1c27896d529abba81e6d93
+#     BUILD_IN_SOURCE 1
+#     CONFIGURE_COMMAND ""
+#     BUILD_COMMAND ${PODS_MAKE_COMMAND} BUILD_PREFIX=${CMAKE_INSTALL_PREFIX} BUILD_TYPE=${CMAKE_BUILD_TYPE}
+#     INSTALL_COMMAND ""
+#     # DEPENDS lcm-pod
+#     )
 
 ExternalProject_Add(apriltags-pod
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/apriltags-pod
@@ -61,5 +61,5 @@ ExternalProject_Add(apriltags-pod
 ExternalProject_Add(crazytags
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-    DEPENDS apriltags-pod pods-cmake libbot
+    DEPENDS apriltags-pod pods-cmake lcm-pod
     )
