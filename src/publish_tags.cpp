@@ -30,6 +30,12 @@
 
 #include <Eigen/Dense>
 
+#define IMAGE_U8_DEFAULT_ALIGNMENT 96
+
+int aligned_width(int width) {
+    return width + (IMAGE_U8_DEFAULT_ALIGNMENT - width % IMAGE_U8_DEFAULT_ALIGNMENT);
+}
+
 struct TagMatch {
     int id; 
     cv::Point2d p0, p1, p2, p3;
@@ -234,6 +240,10 @@ class CameraListener {
         cv::Mat frame;
 
         bool bSuccess = cap->read(frame); // read a new frame from video
+        if (frame.rows == 0) {
+             std::cout << "Got an empty image" << std::endl;
+            return false;
+        }
 
          if (!bSuccess) //if not success, break loop
         {
@@ -250,26 +260,37 @@ class CameraListener {
     //     mLcmWrapper->startHandleThread(true);
     // }
 
-   void onCamera(cv::Mat image) {
+   void onCamera(const cv::Mat& image) {
 
     // void onCamera(const lcm::ReceiveBuffer* buffer, const std::string& channel,
     //             const bot_core::images_t* msg) {
     //     cv::Mat image;
     //     decodeImage(msg, image);
-        cv::Mat image_with_border;
-        cv::copyMakeBorder(image, image_with_border, 0, 0, 16, 16, cv::BORDER_CONSTANT, 0);
-        cv::cvtColor(image_with_border, image_with_border, CV_RGB2GRAY);
-        image_u8_t *image_u8 = fromCvMat(image_with_border);
+        // if (image.cols == 640) {
+        //     cv::copyMakeBorder(image, image, 0, 0, 16, 16, cv::BORDER_CONSTANT, 0);
+        // }
+
+        int residual = image.cols % IMAGE_U8_DEFAULT_ALIGNMENT;
+        cv::Mat img_aligned;
+        if (residual != 0) {
+            cv::copyMakeBorder(image, img_aligned, 0, 0, (IMAGE_U8_DEFAULT_ALIGNMENT - residual) / 2, (IMAGE_U8_DEFAULT_ALIGNMENT - residual) / 2, cv::BORDER_CONSTANT, 0);
+        } else {
+            img_aligned = image.clone();
+        }
+
+
+        cv::cvtColor(img_aligned, img_aligned, CV_RGB2GRAY);
+        image_u8_t *image_u8 = fromCvMat(img_aligned);
         
         std::vector<TagMatch> tags = mDetector->detectTags(image_u8);
-        cv::cvtColor(image_with_border, image_with_border, CV_GRAY2RGB);
+        cv::cvtColor(img_aligned, img_aligned, CV_GRAY2RGB);
         for (int i = 0; i < tags.size(); i++) { 
 
             if (mShowWindow) {
-                cv::line(image_with_border, tags[i].p0, tags[i].p1, cv::Scalar(255,0,0), 2, CV_AA);
-                cv::line(image_with_border, tags[i].p1, tags[i].p2, cv::Scalar(0,255,0), 2, CV_AA);
-                cv::line(image_with_border, tags[i].p2, tags[i].p3, cv::Scalar(0,0,255), 2, CV_AA);
-                cv::line(image_with_border, tags[i].p3, tags[i].p0, cv::Scalar(0,0,255), 2, CV_AA);
+                cv::line(img_aligned, tags[i].p0, tags[i].p1, cv::Scalar(255,0,0), 2, CV_AA);
+                cv::line(img_aligned, tags[i].p1, tags[i].p2, cv::Scalar(0,255,0), 2, CV_AA);
+                cv::line(img_aligned, tags[i].p2, tags[i].p3, cv::Scalar(0,0,255), 2, CV_AA);
+                cv::line(img_aligned, tags[i].p3, tags[i].p0, cv::Scalar(0,0,255), 2, CV_AA);
 
                 Eigen::Vector3d x_axis(2,0,1);
                 Eigen::Vector3d y_axis(0,2,1);
@@ -283,8 +304,8 @@ class CameraListener {
                 py/= py[2];
                 o/= o[2];
 
-                cv::line(image_with_border, cv::Point2d(o[0], o[1]), cv::Point2d(px[0], px[1]), cv::Scalar(255,0,255), 1, CV_AA);
-                cv::line(image_with_border, cv::Point2d(o[0], o[1]), cv::Point2d(py[0], py[1]), cv::Scalar(255,255,0), 1, CV_AA);
+                cv::line(img_aligned, cv::Point2d(o[0], o[1]), cv::Point2d(px[0], px[1]), cv::Scalar(255,0,255), 1, CV_AA);
+                cv::line(img_aligned, cv::Point2d(o[0], o[1]), cv::Point2d(py[0], py[1]), cv::Scalar(255,255,0), 1, CV_AA);
             }
 
             Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[i], K, mDetector->getTagSize());
@@ -297,7 +318,7 @@ class CameraListener {
             
         }
         if (mShowWindow) {
-            cv::imshow("detections", image_with_border);
+            cv::imshow("detections", img_aligned);
             cv::waitKey(1);
         }
         
@@ -322,6 +343,7 @@ class CameraListener {
     
     image_u8_t *fromCvMat(const cv::Mat & img) { 
         image_u8_t *image_u8 = image_u8_create_alignment(img.cols, img.rows, img.step);
+        // image_u8_t *image_u8 = image_u8_create(img.cols, img.rows);
         int size = img.total() * img.elemSize();
         memcpy(image_u8->buf, img.data, size * sizeof(uint8_t));
         return image_u8;
