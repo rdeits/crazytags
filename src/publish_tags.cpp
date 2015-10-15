@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <memory>
+#include <vector>
+#include <iostream>
 
 #include <opencv2/opencv.hpp>
 
@@ -13,21 +15,9 @@
 #include <AprilTags/common/zarray.h>
 #include <AprilTags/common/getopt.h>
 
-// #include <drc_utils/LcmWrapper.hpp>
-// #include <drc_utils/BotWrapper.hpp>
 #include <lcm/lcm-cpp.hpp>
 
 #include <lcmtypes/crazytags/rigid_transform_t.hpp>
-// #include <lcmtypes/bot_core/images_t.hpp>
-// #include <lcmtypes/bot_core/image_t.hpp>
-
-// #include <bot_core/camtrans.h>
-// #include <bot_core/timestamp.h>
-// #include <bot_param/param_util.h>
-// #include <bot_frames_cpp/bot_frames_cpp.hpp>
-
-#include <vector>
-#include <iostream>
 
 #include <Eigen/Dense>
 
@@ -103,23 +93,23 @@ crazytags::rigid_transform_t encodeLCMFrame(Eigen::Isometry3d const & frame)
 
 class AprilTagDetector {
     public:
-    AprilTagDetector(getopt_t *options) : getopt(options) {
+    AprilTagDetector(const std::unique_ptr<getopt_t, void(*)(getopt_t*)> &options){
         tf = tag16h5_create();
-        tf->black_border = getopt_get_int(options, "border");
+        tf->black_border = getopt_get_int(options.get(), "border");
         td = apriltag_detector_create();
         apriltag_detector_add_family(td, tf);
-        show_window = getopt_get_bool(getopt, "window");
+        show_window = getopt_get_bool(options.get(), "window");
 
-        td->quad_decimate = getopt_get_double(getopt, "decimate");
-        td->quad_sigma = getopt_get_double(getopt, "blur");
-        td->nthreads = getopt_get_int(getopt, "threads");
-        td->debug = getopt_get_bool(getopt, "debug");
-        td->refine_edges = getopt_get_bool(getopt, "refine-edges");
-        td->refine_decode = getopt_get_bool(getopt, "refine-decode");
-        td->refine_pose = getopt_get_bool(getopt, "refine-pose");
+        td->quad_decimate = getopt_get_double(options.get(), "decimate");
+        td->quad_sigma = getopt_get_double(options.get(), "blur");
+        td->nthreads = getopt_get_int(options.get(), "threads");
+        td->debug = getopt_get_bool(options.get(), "debug");
+        td->refine_edges = getopt_get_bool(options.get(), "refine-edges");
+        td->refine_decode = getopt_get_bool(options.get(), "refine-decode");
+        td->refine_pose = getopt_get_bool(options.get(), "refine-pose");
 
-        quiet = getopt_get_bool(getopt, "quiet");
-        tag_size = getopt_get_double(getopt, "size");
+        quiet = getopt_get_bool(options.get(), "quiet");
+        tag_size = getopt_get_double(options.get(), "size");
     }
 
     ~AprilTagDetector() {
@@ -226,22 +216,6 @@ class AprilTagDetector {
         return tags;
 
     }
-
-    // void decodeImage(const bot_core::images_t* msg, cv::Mat & decoded_image) {
-    //     bot_core::image_t* leftImage = NULL;
-    //     for (int i = 0; i < msg->n_images; ++i) {
-    //       if (msg->image_types[i] == bot_core::images_t::LEFT) {
-    //         leftImage = (bot_core::image_t*)(&msg->images[i]);
-    //         decoded_image = leftImage->pixelformat == leftImage->PIXEL_FORMAT_MJPEG ?
-    //             cv::imdecode(cv::Mat(leftImage->data), -1) :
-    //             cv::Mat(leftImage->height, leftImage->width, CV_8UC1, leftImage->data.data());
-    //             if (decoded_image.channels() > 1) {
-    //                 cv::cvtColor(decoded_image, decoded_image, CV_RGB2GRAY);
-    //             }
-    //             break;
-    //       }
-    //     }
-    // }
     
     image_u8_t *fromCvMat(const cv::Mat & img) { 
         image_u8_t *image_u8 = image_u8_create_alignment(img.cols, img.rows, img.step);
@@ -261,86 +235,33 @@ class AprilTagDetector {
     double tag_size;
     apriltag_family_t *tf;
     apriltag_detector_t *td;
-    getopt_t *getopt;
 };
-
-
-// class CameraListener {
-//     public:
-//     bool setup(bool show_window) {
-//         cap.reset(new cv::VideoCapture(0)); // open the video camera no. 0
-
-//         if (!cap->isOpened())  // if not success, exit program
-//         {
-//             std::cout << "Cannot open the video cam" << std::endl;
-//             return -1;
-//         }
-        
-//        double dWidth = cap->get(CV_CAP_PROP_FRAME_WIDTH); //get the width of frames of the video
-//        double dHeight = cap->get(CV_CAP_PROP_FRAME_HEIGHT); //get the height of frames of the video
-
-//         std::cout << "Frame size : " << dWidth << " x " << dHeight << std::endl;
-        
-//         K = Eigen::Matrix3d::Identity();
-
-//         // K(0,0) = bot_camtrans_get_focal_length_x(mCamTransLeft);
-//         // K(1,1) = bot_camtrans_get_focal_length_y(mCamTransLeft);
-//         // K(0,2) = bot_camtrans_get_principal_x(mCamTransLeft);
-//         // K(1,2) = bot_camtrans_get_principal_y(mCamTransLeft);
-//         K(0,0) = 0.050;
-//         K(1,1) = 0.050;
-//         K(0,2) = dWidth / 2;
-//         K(1,2) = dHeight / 2;
-
-//         return true;
-//     }  
-
-//     bool readImage() {
-//         cv::Mat frame;
-
-//         bool bSuccess = cap->read(frame); // read a new frame from video
-//         if (!bSuccess) //if not success, break loop
-//         {
-//              std::cout << "Cannot read a frame from video stream" << std::endl;
-//              return false;
-//         }
-
-//        onCamera(frame);
-
-//        return true;
-//    }
-
-//     private:
-//     Eigen::Matrix3d K;
-//     std::unique_ptr<cv::VideoCapture> cap;
-// };
-
-
 
 int main(int argc, char *argv[])
 {
-    getopt_t *getopt = getopt_create();
+    auto options = std::unique_ptr<getopt_t, void(*)(getopt_t*)> (getopt_create(), getopt_destroy);
+    // getopt_t *options = getopt_create();
 
-    getopt_add_bool(getopt, 'h', "help", 0, "Show this help");
-    getopt_add_bool(getopt, 'd', "debug", 0, "Enable debugging output (slow)");
-    getopt_add_bool(getopt, 'w', "window", 1, "Show the detected tags in a window");
-    getopt_add_bool(getopt, 'q', "quiet", 0, "Reduce output");
-    getopt_add_int(getopt, '\0', "border", "1", "Set tag family border size");
-    getopt_add_int(getopt, 't', "threads", "4", "Use this many CPU threads");
-    getopt_add_double(getopt, 'x', "decimate", "1.0", "Decimate input image by this factor");
-    getopt_add_double(getopt, 'b', "blur", "0.0", "Apply low-pass blur to input");
-    getopt_add_bool(getopt, '0', "refine-edges", 1, "Spend more time trying to align edges of tags");
-    getopt_add_bool(getopt, '1', "refine-decode", 0, "Spend more time trying to decode tags");
-    getopt_add_bool(getopt, '2', "refine-pose", 0, "Spend more time trying to precisely localize tags");
-    getopt_add_double(getopt, 's', "size", "0.1735", "Physical side-length of the tag (meters)");
+    getopt_add_bool(options.get(), 'h', "help", 0, "Show this help");
+    getopt_add_bool(options.get(), 'd', "debug", 0, "Enable debugging output (slow)");
+    getopt_add_bool(options.get(), 'w', "window", 1, "Show the detected tags in a window");
+    getopt_add_bool(options.get(), 'q', "quiet", 0, "Reduce output");
+    getopt_add_int(options.get(), '\0', "border", "1", "Set tag family border size");
+    getopt_add_int(options.get(), 't', "threads", "4", "Use this many CPU threads");
+    getopt_add_double(options.get(), 'x', "decimate", "1.0", "Decimate input image by this factor");
+    getopt_add_double(options.get(), 'b', "blur", "0.0", "Apply low-pass blur to input");
+    getopt_add_bool(options.get(), '0', "refine-edges", 1, "Spend more time trying to align edges of tags");
+    getopt_add_bool(options.get(), '1', "refine-decode", 0, "Spend more time trying to decode tags");
+    getopt_add_bool(options.get(), '2', "refine-pose", 0, "Spend more time trying to precisely localize tags");
+    getopt_add_double(options.get(), 's', "size", "0.1735", "Physical side-length of the tag (meters)");
     
 
-    if (!getopt_parse(getopt, argc, argv, 1) || getopt_get_bool(getopt, "help")) {
+    if (!getopt_parse(options.get(), argc, argv, 1) || getopt_get_bool(options.get(), "help")) {
         printf("Usage: %s [options]\n", argv[0]);
-        getopt_do_usage(getopt);
+        getopt_do_usage(options.get());
         exit(0);
     }  
-    AprilTagDetector tag_detector(getopt);
+    AprilTagDetector tag_detector(options);
     auto lcm = std::make_shared<lcm::LCM>();
 
     Eigen::Matrix3d K = Eigen::Matrix3d::Identity();
@@ -359,7 +280,6 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-
     cv::Mat frame;
     while (capture.read(frame)) {
         std::vector<TagMatch> tags = tag_detector.detectTags(frame);
@@ -367,7 +287,6 @@ int main(int argc, char *argv[])
             Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[0], K, tag_detector.getTagSize());
             crazytags::rigid_transform_t tag_to_camera_msg = encodeLCMFrame(tag_to_camera);
             tag_to_camera_msg.utime = timestamp_now();
-            // tag_to_camera_msg.utime = 0;
             lcm->publish("APRIL_TAG_TO_CAMERA_LEFT", &tag_to_camera_msg);
         }
     }

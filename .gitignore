@@ -1,3 +1,5 @@
 build/
 pod-build/
-externals/
+externals/*
+!externals/CMakeLists.txt
+!externals/Makefile
