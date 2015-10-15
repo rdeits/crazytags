@@ -6,6 +6,7 @@ This package is PODs-compliant. If you have apriltags and lcm installed, then yo
 
 If you want to install local copies of apriltags and lcm, then you should do:
 
+	
 	cd externals
 	make
 	cd ..
@@ -14,4 +15,4 @@ If you want to install local copies of apriltags and lcm, then you should do:
 
 ## Required packages (ubuntu)
 
-cmake libopencv-dev
+	cmake libopencv-dev
