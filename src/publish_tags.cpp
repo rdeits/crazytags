@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
     getopt_add_bool(options.get(), '0', "refine-edges", 1, "Spend more time trying to align edges of tags");
     getopt_add_bool(options.get(), '1', "refine-decode", 0, "Spend more time trying to decode tags");
     getopt_add_bool(options.get(), '2', "refine-pose", 0, "Spend more time trying to precisely localize tags");
-    getopt_add_double(options.get(), 's', "size", "0.05367", "Physical side-length of the tag (meters)");
+    getopt_add_double(options.get(), 's', "size", "0.04047", "Physical side-length of the tag (meters)");
     getopt_add_int(options.get(), 'c', "camera", "0", "Camera ID");
     getopt_add_int(options.get(), 'i', "tag_id", "-1", "Tag ID (-1 for all tags in family)");
 
