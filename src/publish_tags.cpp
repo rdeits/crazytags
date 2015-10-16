@@ -341,7 +341,7 @@ int main(int argc, char *argv[])
             tag_to_camera_msg.frame_id = -1;
         }
         tag_to_camera_msg.timestamp = timestamp_now();
-        lcm->publish("APRIL_TAG_TO_CAMERA", &tag_to_camera_msg);
+        lcm->publish("WEBCAM_POS", &tag_to_camera_msg);
     }
 
     return 0;
