@@ -1,5 +1,5 @@
 
-# support only a few flags that might be passed through: 
+# support only a few flags that might be passed through:
 #   BUILD_PREFIX, BUILD_TYPE, CMAKE_FLAGS*
 CMAKE_FLAGS+=$(strip $(CMAKE_FLAGS1) $(CMAKE_FLAGS2) $(CMAKE_FLAGS3) $(CMAKE_FLAGS4) $(CMAKE_FLAGS5) $(CMAKE_FLAGS6) $(CMAKE_FLAGS7) $(CMAKE_FLAGS8) $(CMAKE_FLAGS9) $(CMAKE_FLAGS10) $(CMAKE_FLAGS11) $(CMAKE_FLAGS12) $(CMAKE_FLAGS13) $(CMAKE_FLAGS14) $(CMAKE_FLAGS15) $(CMAKE_FLAGS16) $(CMAKE_FLAGS17) $(CMAKE_FLAGS18) $(CMAKE_FLAGS19) $(CMAKE_FLAGS20))
 ifneq "$(BUILD_PREFIX)" ""
@@ -38,7 +38,7 @@ clean:
 	cmake -E remove_directory build
 
 # other (custom) targets are passed through to the cmake-generated Makefile
-%:: 
+%::
 	cmake --build pod-build $(CMAKE_CONFIG) --target $@
 
 # Default to a less-verbose build.  If you want all the gory compiler output,
@@ -52,7 +52,7 @@ $(VERBOSE).SILENT:
 .PHONY: download-all
 download-all : configure
 	cmake --build pod-build $(CMAKE_CONFIG) --target $@
-	
+
 .PHONY: release_filelist
 release_filelist: configure
 # note: the following will not work in windows cmd shells
