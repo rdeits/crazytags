@@ -17,6 +17,7 @@
 
 #include <lcm/lcm-cpp.hpp>
 
+#include <lcmtypes/crazyflie_t/webcam_pos_t.hpp>
 #include <lcmtypes/crazytags/rigid_transform_t.hpp>
 
 #include <Eigen/Dense>
@@ -24,6 +25,18 @@
 #define IMAGE_U8_DEFAULT_ALIGNMENT 96
 
 typedef Eigen::Matrix<double, 5, 1> Vector5d;
+
+Eigen::Vector3d quat_to_rpy(const Eigen::Quaterniond &q) {
+    Eigen::Vector3d rpy;
+    rpy(0) = atan2(2*(q.w()*q.x() + q.y()*q.z()),
+                   q.w()*q.w() + q.z()*q.z() 
+                   - (q.x()*q.x() + q.y()*q.y()));
+    rpy(1) = asin(2*(q.w()*q.y() - q.z()*q.x()));
+    rpy(2) = atan2(2*(q.w()*q.z() + q.x()*q.y()),
+                   q.w()*q.w() + q.x()*q.x()
+                   - (q.y()*q.y() + q.z()*q.z()));
+    return rpy;
+}
 
 int64_t timestamp_now()
 {
@@ -74,6 +87,24 @@ Eigen::Isometry3d getRelativeTransform(TagMatch const& match, Eigen::Matrix3d co
 }
 
 
+crazyflie_t::webcam_pos_t encodeWebcamPos(Eigen::Isometry3d const & frame) 
+{
+    Eigen::Vector3d t(frame.translation());
+    Eigen::Quaterniond r(frame.rotation());
+    Eigen::Vector3d rpy = quat_to_rpy(r);
+
+    crazyflie_t::webcam_pos_t msg;
+    msg.x = frame.translation().x();
+    msg.y = frame.translation().y();
+    msg.z = frame.translation().z();
+
+    msg.roll = rpy(0);
+    msg.pitch = rpy(1);
+    msg.yaw = rpy(2);
+
+    return msg;
+}
+
 crazytags::rigid_transform_t encodeLCMFrame(Eigen::Isometry3d const & frame) 
 {
     Eigen::Vector3d t(frame.translation());
@@ -91,7 +122,6 @@ crazytags::rigid_transform_t encodeLCMFrame(Eigen::Isometry3d const & frame)
 
     return msg;
 }
-
 
 class AprilTagDetector {
     public:
@@ -112,6 +142,7 @@ class AprilTagDetector {
 
         quiet = getopt_get_bool(options.get(), "quiet");
         tag_size = getopt_get_double(options.get(), "size");
+        tag_id = getopt_get_int(options.get(), "tag_id");
     }
 
     ~AprilTagDetector() {
@@ -139,16 +170,19 @@ class AprilTagDetector {
                 // image_u8_draw_line(im, det->p[x][0], det->p[x][1], det->p[x+1][0], det->p[x+1][1], 255, 10);
             }
 
-            TagMatch tag_match;
-            tag_match.id = det->family->d*det->family->d;
-            tag_match.p0 = cv::Point2d(det->p[0][0], det->p[0][1]);
-            tag_match.p1 = cv::Point2d(det->p[1][0], det->p[1][1]);
-            tag_match.p2 = cv::Point2d(det->p[2][0], det->p[2][1]);
-            tag_match.p3 = cv::Point2d(det->p[3][0], det->p[3][1]);
+            if (tag_id == -1 || det->id == tag_id) {
+                TagMatch tag_match;
+                tag_match.id = det->family->d*det->family->d;
+                tag_match.p0 = cv::Point2d(det->p[0][0], det->p[0][1]);
+                tag_match.p1 = cv::Point2d(det->p[1][0], det->p[1][1]);
+                tag_match.p2 = cv::Point2d(det->p[2][0], det->p[2][1]);
+                tag_match.p3 = cv::Point2d(det->p[3][0], det->p[3][1]);
 
-            Eigen::Map<Eigen::Matrix3d> H_map(det->H->data);
-            tag_match.H = H_map.transpose();
-            tag_matches.push_back(tag_match);
+                Eigen::Map<Eigen::Matrix3d> H_map(det->H->data);
+                tag_match.H = H_map.transpose();
+                tag_matches.push_back(tag_match);
+            }
+
             hamm_hist[det->hamming]++;
         }
 
@@ -231,6 +265,7 @@ class AprilTagDetector {
     private:
     bool show_window;
     int quiet;
+    int tag_id;
     double tag_size;
     apriltag_family_t *tf;
     apriltag_detector_t *td;
@@ -253,6 +288,9 @@ int main(int argc, char *argv[])
     getopt_add_bool(options.get(), '1', "refine-decode", 0, "Spend more time trying to decode tags");
     getopt_add_bool(options.get(), '2', "refine-pose", 0, "Spend more time trying to precisely localize tags");
     getopt_add_double(options.get(), 's', "size", "0.05367", "Physical side-length of the tag (meters)");
+    getopt_add_int(options.get(), 'c', "camera", "0", "Camera ID");
+    getopt_add_int(options.get(), 'i', "tag_id", "-1", "Tag ID (-1 for all tags in family)");
+
     
 
     if (!getopt_parse(options.get(), argc, argv, 1) || getopt_get_bool(options.get(), "help")) {
@@ -283,23 +321,28 @@ int main(int argc, char *argv[])
     //    9.30985112e-01]
 
 
-    cv::VideoCapture capture(0);
+    cv::VideoCapture capture(getopt_get_int(options.get(), "camera"));
     if (!capture.isOpened()) {
         std::cout << "Cannot open the video cam" << std::endl;
         return -1;
     }
 
     cv::Mat frame;
+    Eigen::Isometry3d tag_to_camera = Eigen::Isometry3d::Identity();
+    crazyflie_t::webcam_pos_t tag_to_camera_msg;
     while (capture.read(frame)) {
         std::vector<TagMatch> tags = tag_detector.detectTags(frame);
         if (tags.size() > 0) {
-            Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[0], camera_matrix, distortion_coefficients, tag_detector.getTagSize());
-            crazytags::rigid_transform_t tag_to_camera_msg = encodeLCMFrame(tag_to_camera);
-            tag_to_camera_msg.utime = timestamp_now();
-            lcm->publish("APRIL_TAG_TO_CAMERA", &tag_to_camera_msg);
+            tag_to_camera = getRelativeTransform(tags[0], camera_matrix, distortion_coefficients, tag_detector.getTagSize());
+            tag_to_camera_msg = encodeWebcamPos(tag_to_camera);
+            tag_to_camera_msg.frame_id = 1;
+        } else {
+            tag_to_camera_msg = encodeWebcamPos(tag_to_camera);
+            tag_to_camera_msg.frame_id = -1;
         }
+        tag_to_camera_msg.timestamp = timestamp_now();
+        lcm->publish("APRIL_TAG_TO_CAMERA", &tag_to_camera_msg);
     }
-
 
     return 0;
 }
