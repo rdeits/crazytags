@@ -23,6 +23,8 @@
 
 #define IMAGE_U8_DEFAULT_ALIGNMENT 96
 
+typedef Eigen::Matrix<double, 5, 1> Vector5d;
+
 int64_t timestamp_now()
 {
     struct timeval tv;
@@ -36,7 +38,7 @@ struct TagMatch {
     Eigen::Matrix3d H;
 };
 
-Eigen::Isometry3d getRelativeTransform(TagMatch const& match, Eigen::Matrix3d const & K, double tag_size) 
+Eigen::Isometry3d getRelativeTransform(TagMatch const& match, Eigen::Matrix3d const & camera_matrix, const Eigen::Vector4d &distortion_coefficients, double tag_size) 
 {
   std::vector<cv::Point3f> objPts;
   std::vector<cv::Point2f> imgPts;
@@ -54,11 +56,11 @@ Eigen::Isometry3d getRelativeTransform(TagMatch const& match, Eigen::Matrix3d co
 
   cv::Mat rvec, tvec;
   cv::Matx33f cameraMatrix(
-                           K(0,0), 0, K(0,2),
-                           0, K(1,1), K(1,2),
+                           camera_matrix(0,0), 0, camera_matrix(0,2),
+                           0, camera_matrix(1,1), camera_matrix(1,2),
                            0,  0,  1);
 
-  cv::Vec4f distParam(0,0,0,0); 
+  cv::Vec4f distParam(distortion_coefficients(0), distortion_coefficients(1), distortion_coefficients(2), distortion_coefficients(3)); 
   cv::solvePnP(objPts, imgPts, cameraMatrix, distParam, rvec, tvec);
   cv::Matx33d r;
   cv::Rodrigues(rvec, r);
@@ -131,15 +133,12 @@ class AprilTagDetector {
             apriltag_detection_t *det;
             zarray_get(detections, i, &det);
 
-            if (!quiet)
+            if (!quiet) {
                 printf("detection %3d: id (%2dx%2d)-%-4d, hamming %d, goodness %8.3f, margin %8.3f\n",
                        i, det->family->d*det->family->d, det->family->h, det->id, det->hamming, det->goodness, det->decision_margin);
-
-            for (int x = 0; x < 3 ; x++) {
-                printf("drawing line: %f %f %f %f\n", det->p[x][0], det->p[x][1], det->p[x+1][0], det->p[x+1][1]);
-                image_u8_draw_line(im, det->p[x][0], det->p[x][1], det->p[x+1][0], det->p[x+1][1], 255, 10);
+                // image_u8_draw_line(im, det->p[x][0], det->p[x][1], det->p[x+1][0], det->p[x+1][1], 255, 10);
             }
-            printf("det->hamming: %d\n", det->hamming);
+
             TagMatch tag_match;
             tag_match.id = det->family->d*det->family->d;
             tag_match.p0 = cv::Point2d(det->p[0][0], det->p[0][1]);
@@ -253,7 +252,7 @@ int main(int argc, char *argv[])
     getopt_add_bool(options.get(), '0', "refine-edges", 1, "Spend more time trying to align edges of tags");
     getopt_add_bool(options.get(), '1', "refine-decode", 0, "Spend more time trying to decode tags");
     getopt_add_bool(options.get(), '2', "refine-pose", 0, "Spend more time trying to precisely localize tags");
-    getopt_add_double(options.get(), 's', "size", "0.1735", "Physical side-length of the tag (meters)");
+    getopt_add_double(options.get(), 's', "size", "0.05367", "Physical side-length of the tag (meters)");
     
 
     if (!getopt_parse(options.get(), argc, argv, 1) || getopt_get_bool(options.get(), "help")) {
@@ -264,15 +263,25 @@ int main(int argc, char *argv[])
     AprilTagDetector tag_detector(options);
     auto lcm = std::make_shared<lcm::LCM>();
 
-    Eigen::Matrix3d K = Eigen::Matrix3d::Identity();
-    // K(0,0) = bot_camtrans_get_focal_length_x(mCamTransLeft);
-    // K(1,1) = bot_camtrans_get_focal_length_y(mCamTransLeft);
-    // K(0,2) = bot_camtrans_get_principal_x(mCamTransLeft);
-    // K(1,2) = bot_camtrans_get_principal_y(mCamTransLeft);
-    K(0,0) = 0.050;
-    K(1,1) = 0.050;
-    K(0,2) = 640 / 2;
-    K(1,2) = 480 / 2;
+    Eigen::Matrix3d camera_matrix = Eigen::Matrix3d::Identity();
+    // camera_matrix(0,0) = bot_camtrans_get_focal_length_x(mCamTransLeft);
+    // camera_matrix(1,1) = bot_camtrans_get_focal_length_y(mCamTransLeft);
+    // camera_matrix(0,2) = bot_camtrans_get_principal_x(mCamTransLeft);
+    // camera_matrix(1,2) = bot_camtrans_get_principal_y(mCamTransLeft);
+    camera_matrix(0,0) = 535.04778754;
+    camera_matrix(1,1) = 533.37100256;
+    camera_matrix(0,2) = 302.83654976;
+    camera_matrix(1,2) = 237.69023961;
+
+    Eigen::Vector4d distortion_coefficients(-7.74010810e-02, -1.97835565e-01, -4.47956948e-03, -5.42361499e-04);
+
+    // camera matrix:
+    // [[ 535.04778754    0.          302.83654976]
+    //  [   0.          533.37100256  237.69023961]
+    //  [   0.            0.            1.        ]]
+    // distortion coefficients:  [ -7.74010810e-02  -1.97835565e-01  -4.47956948e-03  -5.42361499e-04
+    //    9.30985112e-01]
+
 
     cv::VideoCapture capture(0);
     if (!capture.isOpened()) {
@@ -284,7 +293,7 @@ int main(int argc, char *argv[])
     while (capture.read(frame)) {
         std::vector<TagMatch> tags = tag_detector.detectTags(frame);
         if (tags.size() > 0) {
-            Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[0], K, tag_detector.getTagSize());
+            Eigen::Isometry3d tag_to_camera = getRelativeTransform(tags[0], camera_matrix, distortion_coefficients, tag_detector.getTagSize());
             crazytags::rigid_transform_t tag_to_camera_msg = encodeLCMFrame(tag_to_camera);
             tag_to_camera_msg.utime = timestamp_now();
             lcm->publish("APRIL_TAG_TO_CAMERA", &tag_to_camera_msg);
